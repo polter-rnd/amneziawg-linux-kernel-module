@@ -1,3 +1,9 @@
+amneziawg-linux-kmod (1.0.0-1~20260906+devass1) UNRELEASED; urgency=medium
+
+  * Rebuild on latest master (4569c4c)
+
+ -- Pavel Artsishevsky <polter.rnd@gmail.com>  Fri, 09 Oct 2026 13:31:00 +0200
+ 
 amneziawg-linux-kmod (1.0.0) unstable; urgency=medium
 
   * Initial release
