@@ -1,0 +1,54 @@
+Description: Probe udp_tunnel.h for the setup_udp_tunnel_sock() signature
+ Some distro kernels (e.g. Ubuntu 24.04 HWE 7.0.0-xx) backport the change of
+ setup_udp_tunnel_sock()/udp_tunnel_sock_release() from struct socket to
+ struct sock while reporting a version older than 7.1.5. Detect the signature
+ from the installed header instead of relying on LINUX_VERSION_CODE alone.
+Author: Pavel Artsishevsky <polter.rnd@gmail.com>
+Forwarded: no
+
+diff --git a/src/Kbuild b/src/Kbuild
+index a154c7b..6683b80 100644
+--- a/src/Kbuild
++++ b/src/Kbuild
+@@ -8,6 +8,24 @@ ccflags-$(CONFIG_AMNEZIAWG_DEBUG) += -DDEBUG -g
+ ccflags-$(if $(WIREGUARD_VERSION),y,) += -D'WIREGUARD_VERSION="$(WIREGUARD_VERSION)"'
+ ccflags-$(if $(OMIT_ENDPOINTS),y,) += -D'OMIT_ENDPOINTS="$(OMIT_ENDPOINTS)"'
+ 
++# Some distro kernels backport only part of the udp_tunnel API change from struct socket to
++# struct sock, so probe the installed header for each function instead of relying on the version.
++udp-tunnel-h := $(srctree)/include/net/udp_tunnel.h
++ifneq ($(wildcard $(udp-tunnel-h)),)
++udp-tunnel-old-setup := $(shell grep -c 'setup_udp_tunnel_sock.struct net .net. struct socket' $(udp-tunnel-h))
++udp-tunnel-old-release := $(shell grep -c 'udp_tunnel_sock_release.struct socket' $(udp-tunnel-h))
++ifneq ($(udp-tunnel-old-setup),0)
++ccflags-y += -DCOMPAT_UDP_TUNNEL_SETUP_TAKES_SOCKET=1
++else
++ccflags-y += -DCOMPAT_UDP_TUNNEL_SETUP_TAKES_SOCKET=0
++endif
++ifneq ($(udp-tunnel-old-release),0)
++ccflags-y += -DCOMPAT_UDP_TUNNEL_RELEASE_TAKES_SOCKET=1
++else
++ccflags-y += -DCOMPAT_UDP_TUNNEL_RELEASE_TAKES_SOCKET=0
++endif
++endif
++
+ amneziawg-y := main.o noise.o device.o peer.o timers.o queueing.o send.o receive.o socket.o peerlookup.o allowedips.o ratelimiter.o cookie.o netlink.o junk.o header_protection.o
+ 
+ ifeq ($(shell [ $(VERSION) -lt 6 -o \( $(VERSION) -eq 6 -a $(PATCHLEVEL) -lt 1 \) ] && echo y),y)
+diff --git a/src/compat/compat.h b/src/compat/compat.h
+index 3b8606d..2b2cd75 100644
+--- a/src/compat/compat.h
++++ b/src/compat/compat.h
+@@ -1444,9 +1444,11 @@ static inline void __compat_chacha20_crypt(struct chacha_state *state,
+ 
+ #endif
+ 
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 1, 5)
+ #include <net/udp_tunnel.h>
++#if defined(COMPAT_UDP_TUNNEL_SETUP_TAKES_SOCKET) ? COMPAT_UDP_TUNNEL_SETUP_TAKES_SOCKET : LINUX_VERSION_CODE < KERNEL_VERSION(7, 1, 5)
+ #define setup_udp_tunnel_sock(net, sk, sock_cfg) setup_udp_tunnel_sock(net, sk->sk_socket, sock_cfg)
++#endif
++#if defined(COMPAT_UDP_TUNNEL_RELEASE_TAKES_SOCKET) ? COMPAT_UDP_TUNNEL_RELEASE_TAKES_SOCKET : LINUX_VERSION_CODE < KERNEL_VERSION(7, 1, 5)
+ #define udp_tunnel_sock_release(sk) udp_tunnel_sock_release(sk->sk_socket)
+ #endif
+ 
